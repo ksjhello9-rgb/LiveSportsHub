@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
@@ -11,8 +12,11 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 app = Flask(__name__)
 
-# Build telegram application globally
+# Initialize telegram application globally
 telegram_app = Application.builder().token(TOKEN).build()
+
+async def initialize_bot():
+    await telegram_app.initialize()
 
 async def start(update: Update, context):
     keyboard = [
@@ -40,13 +44,19 @@ def index():
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    # Process update asynchronously or synchronously via loop
-    import asyncio
-    asyncio.run(telegram_app.process_update(update))
+    try:
+        json_data = request.get_json(force=True)
+        update = Update.de_json(json_data, telegram_app.bot)
+        
+        async def process():
+            await telegram_app.initialize()
+            await telegram_app.process_update(update)
+            
+        asyncio.run(process())
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
     return 'OK'
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    # Set webhook automatically if WEBHOOK_URL is provided, else run flask
     app.run(host="0.0.0.0", port=port)
